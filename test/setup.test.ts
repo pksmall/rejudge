@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fetchDaemonModels, formatSetupReport, runOllamaSetup, setupPaths } from "../src/setup.ts";
@@ -15,7 +15,13 @@ const FOUR_LABS: DaemonModel[] = [
   { id: "gemma4:31b-cloud", contextLength: 262144, thinking: true, tools: true },
 ];
 
-/** An isolated Pi agent dir + XDG home + project dir, so nothing touches the real machine. */
+/**
+ * An isolated Pi agent dir + XDG home + project dir, so nothing touches the real machine.
+ *
+ * `restore` puts the environment back and deletes all three directories. Every test calls it from a
+ * `finally`, so cleanup rides along — a suite that leaves its scratch behind quietly fills the temp
+ * directory with thousands of them.
+ */
 function sandbox(): { cwd: string; agentDir: string; xdg: string; restore: () => void } {
   const cwd = mkdtempSync(join(tmpdir(), "rejudge-setup-cwd-"));
   const agentDir = mkdtempSync(join(tmpdir(), "rejudge-setup-agent-"));
@@ -31,6 +37,10 @@ function sandbox(): { cwd: string; agentDir: string; xdg: string; restore: () =>
     else process.env.PI_CODING_AGENT_DIR = prevAgent;
     if (prevXdg === undefined) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = prevXdg;
+
+    for (const dir of [cwd, agentDir, xdg]) {
+      rmSync(dir, { recursive: true, force: true });
+    }
   };
 
   return { cwd, agentDir, xdg, restore };
