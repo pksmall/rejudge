@@ -32,7 +32,9 @@ left alone unless you pass `--force`. `--project` writes the panel to `<cwd>/.re
 instead of the user-wide one.
 
 The rest of this guide is what that command writes and why. Read it when you want to tune the panel,
-add a model by hand, or understand a failure.
+add a model by hand, or understand a failure. If you would rather be walked through the whole thing
+in order — Node, Ollama, models, install, first review — that is
+[ollama-quickstart.md](ollama-quickstart.md) ([по-русски](ollama-quickstart.ru.md)).
 
 ## Before you start
 
