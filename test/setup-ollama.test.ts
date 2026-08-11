@@ -7,6 +7,7 @@ import {
   modelFamily,
   parseDaemonModels,
   proposePanel,
+  showContextLength,
   type DaemonModel,
 } from "../src/setup-ollama.ts";
 
@@ -269,4 +270,33 @@ test("a local model is still used when there are not enough cloud ones", () => {
   const panel = proposePanel(mixed)._unsafeUnwrap();
 
   expect(panel.reviewers).toContain("local-thing:26b");
+});
+
+// --- context length from /api/show ------------------------------------------
+// `/api/tags` omits `details.context_length` for some models — every MLX build does, and MLX is
+// what runs fast on Apple Silicon. `/api/show` still knows it, under an architecture-prefixed key.
+
+test("the context length is read from the architecture-prefixed key in model_info", () => {
+  const payload = {
+    details: { context_length: null },
+    model_info: { "qwen3_5.context_length": 262144, "qwen3_5.attention.head_count": 32 },
+  };
+  expect(showContextLength(payload)).toBe(262144);
+});
+
+test("any architecture prefix works, since the key carries the model's own name", () => {
+  expect(showContextLength({ model_info: { "gemma4.context_length": 131072 } })).toBe(131072);
+  expect(showContextLength({ model_info: { "llama.context_length": 8192 } })).toBe(8192);
+});
+
+test("a payload with no context anywhere yields undefined rather than a guess", () => {
+  expect(showContextLength({ model_info: { "qwen3_5.attention.head_count": 32 } })).toBeUndefined();
+  expect(showContextLength({})).toBeUndefined();
+  expect(showContextLength(null)).toBeUndefined();
+});
+
+test("a non-numeric or absurd value is refused, so a bad payload cannot become a window", () => {
+  expect(showContextLength({ model_info: { "x.context_length": "262144" } })).toBeUndefined();
+  expect(showContextLength({ model_info: { "x.context_length": 0 } })).toBeUndefined();
+  expect(showContextLength({ model_info: { "x.context_length": -1 } })).toBeUndefined();
 });

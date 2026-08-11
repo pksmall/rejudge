@@ -13,6 +13,7 @@ import {
   mergeProviderInto,
   parseDaemonModels,
   proposePanel,
+  showContextLength,
   type DaemonModel,
   type IneligibleReason,
   type PanelProposal,
@@ -104,7 +105,43 @@ export async function fetchDaemonModels(
     return err(`the Ollama daemon at ${daemonUrl} returned something other than JSON for /api/tags`);
   }
 
-  return ok(parseDaemonModels(payload));
+  return ok(await fillMissingContext(parseDaemonModels(payload), daemonUrl, signal));
+}
+
+/**
+ * Ask `/api/show` for the context window of models whose `/api/tags` entry did not carry one — every
+ * MLX build, among others. Without this those models look unusable and get skipped, which on an
+ * Apple Silicon machine skips exactly the builds worth running locally.
+ *
+ * Only the models that are missing it are asked about, and a failed or unhelpful answer leaves the
+ * model as it was: it will then be reported as skipped, which is the honest outcome, rather than
+ * given an invented window.
+ */
+async function fillMissingContext(
+  models: DaemonModel[],
+  daemonUrl: string,
+  signal?: AbortSignal,
+): Promise<DaemonModel[]> {
+  return Promise.all(
+    models.map(async (model) => {
+      if (model.contextLength !== undefined) return model;
+
+      try {
+        const response = await fetch(`${daemonUrl}/api/show`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: model.id }),
+          signal,
+        });
+        if (!response.ok) return model;
+
+        const contextLength = showContextLength(await response.json());
+        return contextLength === undefined ? model : { ...model, contextLength };
+      } catch {
+        return model;
+      }
+    }),
+  );
 }
 
 /** Read a JSON file that may not exist. Absent is fine; malformed is not — it is the user's file. */

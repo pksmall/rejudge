@@ -52,6 +52,30 @@ export function parseDaemonModels(payload: unknown): DaemonModel[] {
   return parsed;
 }
 
+/**
+ * The context window out of an `/api/show` payload, or undefined when it is not in there.
+ *
+ * `/api/tags` leaves `details.context_length` empty for some builds — every MLX one does, and MLX is
+ * what runs fast on Apple Silicon — but `/api/show` still knows the number, under a key the model's
+ * own architecture names: `qwen3_5.context_length`, `gemma4.context_length`. So the lookup is by
+ * suffix rather than by a list of architectures we would have to keep up to date.
+ *
+ * Anything that is not a positive whole number is refused instead of being turned into a window: a
+ * wrong window is the one mistake that makes a truncated review look like a successful one.
+ */
+export function showContextLength(payload: unknown): number | undefined {
+  const info = (payload as { model_info?: unknown } | null)?.model_info;
+  if (typeof info !== "object" || info === null) return undefined;
+
+  for (const [key, value] of Object.entries(info as Record<string, unknown>)) {
+    if (!key.endsWith(".context_length")) continue;
+    if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) continue;
+    return value;
+  }
+
+  return undefined;
+}
+
 /** Why a model cannot serve in a panel. Each one is something that breaks a review quietly. */
 export type IneligibleReason = "no-thinking" | "no-tools" | "no-context";
 
