@@ -54,7 +54,7 @@ I personally use [OpenCode Go](https://opencode.ai/go?ref=GSCMBMGRST) (referral 
 
 For [subscription](https://pi.dev/docs/latest/providers#subscriptions) logins Rejudge still goes through Pi. If Pi is not authorized yet, run `npx -y @earendil-works/pi-coding-agent`, then `/login` inside Pi.
 
-Ollama is the exception: Pi has no built-in provider for it, so a subscription or a local server takes one file to declare, plus a few settings you would not guess. [docs/ollama.md](docs/ollama.md) has the working config and the reasons.
+Ollama is the exception: Pi has no built-in provider for it, so a subscription or a local server takes one file to declare, plus a few settings you would not guess. [docs/ollama.md](docs/ollama.md) has the working config and the reasons; [docs/ollama-quickstart.md](docs/ollama-quickstart.md) walks the whole thing in order, from Node to a finished review ([по-русски](docs/ollama-quickstart.ru.md)).
 
 ### 4. Pick your models
 
