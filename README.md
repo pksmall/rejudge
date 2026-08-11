@@ -143,9 +143,20 @@ pi install "$PWD"
 
 `npm link` puts this checkout's CLI on your `PATH`, so later `just build` runs update it, and `pi install` registers the same checkout. Rebuild after changing `src/`. Run `just` on its own to list the repository workflows.
 
+Under a version manager, run all of these with a supported Node active. The test suite fails the same way the CLI does when an older one is resolved, and the error points at neither.
+
 ## When something breaks
 
-- **Unsupported Node version** — install Node 22.19.0 or newer, then reinstall Rejudge.
+- **Unsupported Node version** — the crash names neither Node nor a version. It is a `TypeError` from inside the bundle, usually `webidl.util.markAsUncloneable is not a function`. Install Node 22.19.0 or newer, then reinstall Rejudge.
+
+  Under a version manager this happens even when a new enough Node is installed, because `rejudge` starts through `#!/usr/bin/env node` and so runs whichever Node your shell resolves — not the one you installed the package under. Check the two separately:
+
+  ```bash
+  node --version                 # the Node rejudge will actually use
+  npm ls -g --depth=0 rejudge    # whether that Node can see the package
+  ```
+
+  Make the new version your default (`nvm alias default 22`), or install Rejudge under the Node your shell already resolves.
 - **`rejudge: command not found`** — check that `npm install -g rejudge` succeeded and that the `bin` directory under `npm prefix -g` is on your `PATH`.
 - **`rejudge: no config found`** — create `.rejudge/config.json` in the project, or the global file shown above.
 - **Authentication failure** — export the provider key in the same shell that starts `rejudge` or Pi. The last stderr line names the stage that failed and usually contains `API key`, `authentication`, `credentials`, or `unauthorized`.
