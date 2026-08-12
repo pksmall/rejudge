@@ -192,7 +192,7 @@ machine. The model list is yours, and keeping it current is yours too.
 - `some slots reuse the same lab` — the panel came together, but out of one line. It will run; it
   will not check anything. Pull a model from another vendor.
 - A `local models` block — local weights made it into the panel. Read the context section in
-  [ollama.md](ollama.md#purely-local-models): the daemon does not serve the window the model
+  [ollama.md](ollama.md#local-models): the daemon does not serve the window the model
   advertises, and an overflow is truncated silently.
 - `cannot reach the Ollama daemon` — the daemon is not up; back to step 2.
 

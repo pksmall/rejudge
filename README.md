@@ -50,11 +50,13 @@ Already using Pi? Nothing to do here. Rejudge takes the providers you set up in 
 
 Rejudge runs on Pi and reads Pi's provider settings, so any key Pi accepts works here: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENCODE_API_KEY`, and more — the full list is in the [Pi docs](https://pi.dev/docs/latest/providers#api-keys).
 
+For Ollama users, see the note below.[^ollama]
+
 I personally use [OpenCode Go](https://opencode.ai/go?ref=GSCMBMGRST) (referral link: $5 for you, $5 for me) because it offers an excellent mix of models for $10 a month.
 
-For [subscription](https://pi.dev/docs/latest/providers#subscriptions) logins Rejudge still goes through Pi. If Pi is not authorized yet, run `npx -y @earendil-works/pi-coding-agent`, then `/login` inside Pi.
+Behind a corporate proxy? The CLI reads `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` — see [docs/proxy.md](docs/proxy.md).
 
-Ollama is the exception: Pi has no built-in provider for it, so a subscription or a local server takes one file to declare, plus a few settings you would not guess. [docs/ollama.md](docs/ollama.md) has the working config and the reasons; [docs/ollama-quickstart.md](docs/ollama-quickstart.md) walks the whole thing in order, from Node to a finished review ([по-русски](docs/ollama-quickstart.ru.md)).
+For [subscription](https://pi.dev/docs/latest/providers#subscriptions) logins Rejudge still goes through Pi. If Pi is not authorized yet, run `npx -y @earendil-works/pi-coding-agent`, then `/login` inside Pi.
 
 ### 4. Pick your models
 
@@ -129,7 +131,7 @@ Every run ends with a run ID. `rejudge --resume <run-id> "..."` reopens the same
 
 The npm package ships prebuilt CLI and extension files, so running Rejudge needs no Bun. Building from source does.
 
-Release checks run the packed artifact in Node 22.19.0 Docker containers. Development is tested with Node 24.14.0, npm 11.14.1, Bun 1.3.13, and Pi 0.83.0.
+Release checks run the packed artifact in Node 22.19.0 Docker containers. Development is tested with Node 24.14.0, npm 11.14.1, Bun 1.3.13, and Pi 0.84.1.
 
 ## Install from source
 
@@ -164,3 +166,5 @@ Under a version manager, run all of these with a supported Node active. The test
 - **Authentication failure** — export the provider key in the same shell that starts `rejudge` or Pi. The last stderr line names the stage that failed and usually contains `API key`, `authentication`, `credentials`, or `unauthorized`.
 - **Pi does not show Rejudge** — run `pi list`, check that the registered path matches `$(npm root -g)/rejudge`, then restart Pi.
 - **A model or a stage fails** — read the final stderr reason, then check the model ID, provider access, rate limits, and network.
+
+[^ollama]: Ollama has no built-in Pi provider, so declare it by hand in `~/.pi/agent/models.json`. Three settings decide whether it works, and a wrong one produces no error: `compat.supportsDeveloperRole: false` — a reasoning model's system prompt otherwise reaches an Ollama chat template as `role: "developer"`, which the template may not handle; `compat.maxTokensField: "max_tokens"` — Ollama ignores the unsupported `max_completion_tokens`, leaving the output uncapped; and `thinkingLevelMap` on every model — Ollama accepts only `high`, `medium`, `low`, `max`, and `none`, so `@minimal` otherwise returns 400 and `@xhigh` is clamped to `high`. The provider block, the id naming rule, where those numbers come from and what the failures look like are in [docs/ollama.md](docs/ollama.md). A step-by-step walkthrough is in [docs/ollama-quickstart.md](docs/ollama-quickstart.md) ([по-русски](docs/ollama-quickstart.ru.md)).

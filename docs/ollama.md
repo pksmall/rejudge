@@ -1,64 +1,45 @@
-# Ollama as a Rejudge provider
+# Ollama
 
-Ollama is not one of Pi's built-in providers, so Rejudge reaches it the way Pi reaches any
-OpenAI-compatible endpoint: through a provider you declare once in `~/.pi/agent/models.json`.
-No Rejudge code or flag is involved — the panel then names Ollama models like any others.
+Pi has no built-in provider for Ollama, so Ollama models reach Rejudge as a provider you declare
+once in `~/.pi/agent/models.json`. Nothing in Rejudge changes: the panel names Ollama models the way
+it names any others.
 
-Two setups are worth having, and they share one file:
+The three settings that fail without an error are listed in the README. This is the rest of it — the
+file, the model ids, where the numbers come from, and what the failures look like.
 
-- **Cloud models through the local daemon.** Requests go to `127.0.0.1:11434`, the daemon forwards
-  them to Ollama Cloud on your account. Your subscription pays, and no API key touches Rejudge.
-- **Models on your own machine.** Same endpoint, local weights. Read
-  [Purely local models](#purely-local-models) first — the default context window will quietly
-  ruin a review.
-
-Three settings in that file are load-bearing. Each one is wrong by default for Ollama, and each one
-fails without saying so. They are explained in [Why those three settings](#why-those-three-settings);
-copy them even if the reason looks academic.
+Both routes use the same provider. Cloud models go to `127.0.0.1:11434` and the daemon forwards them
+to Ollama Cloud on your account; local weights are served by the same daemon. Either way no API key
+reaches Rejudge, because the daemon holds the credentials.
 
 ## The short way
 
-One command writes both files for the models your daemon already has:
+This fork has a command that writes both files for the models your daemon already has:
 
 ```bash
-rejudge setup ollama            # --dry-run first, if you want to see it before it writes
+rejudge setup ollama            # --dry-run first, to see it before it writes
 ```
 
-It reads your local model list, declares the ones that can serve a review, and proposes a panel of
-models from different labs. It fetches no catalog and pulls nothing — see
-[Your model list is yours to curate](#your-model-list-is-yours-to-curate). An existing
-`models.json` keeps its other providers and is copied to `.bak` first; an existing Rejudge config is
-left alone unless you pass `--force`. `--project` writes the panel to `<cwd>/.rejudge/config.json`
-instead of the user-wide one.
+It reads your local model list, declares the ones that can serve a review, and proposes a panel from
+different labs. It fetches no catalogue and pulls nothing. An existing `models.json` keeps its other
+providers and is copied to `.bak` first; an existing Rejudge config is left alone unless you pass
+`--force`, and `--project` writes the panel to `<cwd>/.rejudge/config.json` instead of the user-wide
+one.
 
-The rest of this guide is what that command writes and why. Read it when you want to tune the panel,
-add a model by hand, or understand a failure. If you would rather be walked through the whole thing
-in order — Node, Ollama, models, install, first review — that is
+Everything below is what that command writes, and how to do it by hand. For a walkthrough in order —
+Node, Ollama, models, install, first review — see
 [ollama-quickstart.md](ollama-quickstart.md) ([по-русски](ollama-quickstart.ru.md)).
 
-## Before you start
+## The provider
 
-Ollama installed and signed in, so cloud models resolve. The `run` also starts the daemon if it is
-not up yet, which is what the rest of this guide talks to:
-
-```bash
-ollama --version
-ollama run gpt-oss:120b-cloud "ping"     # any cloud model; proves the account is connected
-```
-
-Pi's agent directory has to exist — `rejudge setup ollama` creates it, but by hand it is on you. A
-missing `models.json` is not an error: Pi reads no providers and the failure arrives later as
-`Unknown model`, which names the wrong problem.
+Create the directory if it is not there — a missing `models.json` is not an error, Pi simply reads no
+providers and the failure arrives later as `Unknown model`:
 
 ```bash
 mkdir -p ~/.pi/agent
 ```
 
-## Cloud models through the local daemon
-
-Write `~/.pi/agent/models.json`. If you already have one, add the `ollama` key to the existing
-`providers` object instead of replacing the file — this is also where your other providers'
-keys and overrides live.
+If you already have a `models.json`, add the `ollama` key to its `providers` object rather than
+replacing the file: that is also where your other providers' credentials and overrides live.
 
 ```json
 {
@@ -97,21 +78,64 @@ keys and overrides live.
 }
 ```
 
-That block is one model. A panel needs at least three reviewers and a judge, so repeat it per model
-before you go on — **every id you name in the Rejudge config has to be declared here**, or the run
-fails with `Unknown model` for the ones that are missing.
+Repeat the model block per model. A panel takes two reviewers at minimum plus a judge, and every id
+named in your Rejudge config has to be declared here first.
 
-`name` is cosmetic: it is the label Pi shows when listing models.
+`apiKey` is a placeholder rather than a secret, since the daemon authenticates. It cannot be empty
+though: an empty string fails validation, the provider is dropped, and every model reads as unknown.
 
-`apiKey` is a placeholder, not a secret: the daemon holds your credentials. It cannot be empty
-though — an empty string fails validation, the provider is dropped, and the run reports
-`Unknown model`. Ollama's own examples use the same placeholder.
+`cost` is required and stays at zero, because a subscription has no per-token price. Rejudge reports
+`$0` for the run.
 
-`cost` stays at zero because a subscription has no per-token price. Rejudge will report `$0` for the
-run. All four of its keys are required.
+## Model ids
 
-Then name the models in `.rejudge/config.json` for one project, or `~/.config/rejudge/config.json`
-for all of them, with the provider key you chose as the prefix:
+The id is the name the daemon accepts. For a cloud model the `-cloud` marker attaches differently
+depending on whether the model carries a tag:
+
+| Model in the catalogue | Id to write |
+| --- | --- |
+| `glm-5.2` (no tag) | `glm-5.2:cloud` |
+| `gpt-oss:120b` (tagged) | `gpt-oss:120b-cloud` |
+| `nemotron-3-nano:30b` (tagged) | `nemotron-3-nano:30b-cloud` |
+
+Get it wrong and the daemon answers `model not found`. A local model is named exactly as
+`ollama list` shows it.
+
+Pulling a cloud model first is optional — the daemon proxies it on demand — but the stub is a few
+hundred bytes and it puts the model in your local list, where the next section can read its numbers.
+
+## Where `reasoning` and `contextWindow` come from
+
+Read them off the daemon rather than guessing. `capabilities` decides `reasoning`, and
+`details.context_length` is the window:
+
+```bash
+curl -s http://127.0.0.1:11434/api/tags | python3 -c '
+import sys, json
+for m in json.load(sys.stdin)["models"]:
+    caps = m.get("capabilities") or []
+    ctx = (m.get("details") or {}).get("context_length")
+    print(m["name"], ctx, "thinking" if "thinking" in caps else "NO-THINKING")'
+```
+
+A model that does not report `thinking` has to be declared `reasoning: false`, and its `@level` then
+drops to `off` without a word — so it is not one to put in a panel. Reviewers need `tools` as well,
+since the work is reading the diff and the files around it.
+
+Some builds leave `context_length` out of `/api/tags` — every MLX one does. `/api/show` still has it,
+under a key named after the model's architecture:
+
+```bash
+curl -s http://127.0.0.1:11434/api/show -d '{"model":"qwen3.5:4b-mlx"}' \
+  | python3 -c 'import sys, json; print({k: v for k, v in json.load(sys.stdin)["model_info"].items() if k.endswith(".context_length")})'
+```
+
+Rounding `contextWindow` down is safe — it only makes Pi compact earlier. Rounding up invites a
+server-side error partway through a long review.
+
+## The panel
+
+Name the declared models in your Rejudge config, with the provider key as the prefix:
 
 ```json
 {
@@ -124,137 +148,46 @@ for all of them, with the provider key you chose as the prefix:
 }
 ```
 
-Pick reviewers from different labs. Models that share weights share their blind spots, and a panel
-that agrees for that reason tells you nothing.
+Ollama takes `low`, `medium`, `high` and `xhigh` through the map above. It rejects `minimal`
+outright, so leave that one out of an Ollama panel.
 
-## Naming a cloud model
+Pick reviewers from different labs. Two models from one line share their blind spots, and a panel
+that agrees for that reason has told you nothing.
 
-The id is the name the daemon accepts, and the `-cloud` marker attaches differently depending on
-whether the model carries a tag:
+## Local models
 
-| Model in the catalog | Id to write |
-| --- | --- |
-| `glm-5.2` (no tag) | `glm-5.2:cloud` |
-| `gpt-oss:120b` (tagged) | `gpt-oss:120b-cloud` |
-| `nemotron-3-nano:30b` (tagged) | `nemotron-3-nano:30b-cloud` |
+Local weights work through the same provider, with one difference that outweighs the rest: the
+context window is a server setting, and an overflow is silent.
 
-Get the spelling wrong and the daemon answers `model not found`, not a hint.
-
-You do not have to `ollama pull` a cloud model to use it — the daemon proxies it on demand. Pull it
-anyway: the stub is a few hundred bytes, it carries the two facts the config needs, and it puts the
-model in your local list where tooling can see it.
-
-## Your model list is yours to curate
-
-The daemon only reports models you have pulled. Nothing discovers the catalog for you, and nothing
-keeps your list current — deciding which models you want, pulling them, and replacing them when the
-service moves on are all yours:
-
-```bash
-ollama list                        # what you have
-ollama pull glm-5.2:cloud          # add one
-ollama rm glm-4.6:cloud            # drop one
-```
-
-Two things make this a real chore rather than a one-off. Ollama retires cloud models, and a retired
-model keeps its local stub — `ollama list` still shows it, and only a review fails, with a 410. And
-a model outside your plan answers 402 rather than anything useful. So when a run starts failing on a
-model that "is right there in the list", check the catalog before you check your config:
-<https://ollama.com/search?c=thinking&c=cloud&c=tools>.
-
-## Where `reasoning` and `contextWindow` come from
-
-Read them from the daemon instead of guessing. `capabilities` decides `reasoning`, and
-`details.context_length` is the real window:
-
-```bash
-ollama pull glm-5.2:cloud
-curl -s http://127.0.0.1:11434/api/tags | python3 -c '
-import sys, json
-for m in json.load(sys.stdin)["models"]:
-    caps = m.get("capabilities") or []
-    ctx = (m.get("details") or {}).get("context_length")
-    print(m["name"], ctx, "thinking" if "thinking" in caps else "NO-THINKING")'
-```
-
-A model without `thinking` must be declared `reasoning: false`, and then its `@level` collapses to
-`off` without a word — so it is not a reviewer you want. Reviewers need `tools` too: the whole job is
-reading the diff and the files around it.
-
-Rounding `contextWindow` down is safe; it only makes Pi compact earlier. Rounding up invites a
-server-side error on a long review.
-
-## Reasoning levels
-
-Rejudge requires an `@level` on every model, and Ollama accepts a different vocabulary than Rejudge
-uses. Without a complete `thinkingLevelMap` you get two different failures from one cause:
-
-```
-$ curl -s http://127.0.0.1:11434/v1/chat/completions -H 'Content-Type: application/json' \
-    -d '{"model":"glm-5.2:cloud","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"minimal"}'
-{"error":{"message":"invalid reasoning value: 'minimal' (must be \"high\", \"medium\", \"low\", \"max\", or \"none\")", ...}}
-```
-
-`@minimal` is rejected outright, and `@xhigh` never reaches the wire — Pi clamps a level the model
-does not declare, so it silently becomes `high`. The map in the example above fixes both: `minimal`
-lands on `low`, and `xhigh` reaches Ollama's `max`, which is a real level above `high`.
-
-## Why those three settings
-
-For a base URL it does not recognize, Pi assumes OpenAI's behavior. Two of those assumptions are
-wrong for Ollama, and neither announces itself. The third setting is the reasoning map above.
-
-| Setting | Without it | Why |
-| --- | --- | --- |
-| `supportsDeveloperRole: false` | Reviews come back, written without ever seeing their instructions | Pi sends the system prompt as `role: "developer"` for reasoning models. Ollama passes the role straight into the chat template, which handles `system` and not `developer`, so the prompt is dropped and the model answers from nothing. |
-| `maxTokensField: "max_tokens"` | The output cap silently does not apply | Ollama has no `max_completion_tokens` field and ignores unknown ones. It answers `200` and keeps generating. |
-| `thinkingLevelMap` (per model) | `@minimal` fails every request, `@xhigh` degrades to `high` | See [Reasoning levels](#reasoning-levels). |
-
-Do not copy `supportsReasoningEffort: false` from generic custom-provider advice. Ollama does support
-`reasoning_effort`, and turning it off throws your reviewers' reasoning level away.
-
-One warning about this file: unknown keys inside `compat` are accepted in silence. A typo in a field
-name is not reported anywhere — it simply does nothing.
-
-## Purely local models
-
-Local weights work through the same provider, with one difference that matters more than all the
-rest: **the context window is a server setting, and overflow is silent.**
-
-`num_ctx` cannot be set through the OpenAI-compatible endpoint (`max_tokens` is a different thing),
+`num_ctx` cannot be set through the OpenAI-compatible endpoint — `max_tokens` is a different thing —
 so it comes from the daemon:
 
 ```bash
 OLLAMA_CONTEXT_LENGTH=65536 ollama serve
 ```
 
-Set each local model's `contextWindow` to exactly that number. Claim more and Ollama truncates the
-input instead of compacting it — and Rejudge cannot tell. A truncated run still ends with a clean
-stop and non-empty text, so it is reported as a success: a confident review of a diff the model
-never saw. Pi says the same about this provider in `utils/overflow.d.ts` of its `pi-ai` package —
-that Ollama may truncate input silently, and that the truncation cannot be detected from the
-response.
+Set each local model's `contextWindow` to that number. Claim more and Ollama truncates the input
+instead of compacting it, and Rejudge cannot tell: a truncated run still ends with a clean stop and
+non-empty text, so it is reported as a success — a confident review of a diff the model never saw.
 
-A reviewer needs the room. A single `git_diff` in full mode returns up to 200 000 bytes in one tool
+A reviewer needs the room. One `git_diff` in full mode returns up to 200 000 bytes in a single tool
 result, before any file reads.
 
-Two more things to expect locally. Reviewers run concurrently, so a three-model panel needs three
-models resident at once — `OLLAMA_NUM_PARALLEL` defaults to serving one request at a time, and
-models that do not all fit in memory get evicted and reloaded on every step of the tool loop.
-And the panel is all-or-nothing: one local reviewer that stalls or truncates fails the whole run,
-after the other reviewers have already finished and been paid for.
+Reviewers also run concurrently, so a three-model panel needs three models resident at once.
+`OLLAMA_NUM_PARALLEL` serves one request at a time by default, and models that do not all fit in
+memory get evicted and reloaded on every step of the tool loop.
 
 ## When something goes wrong
 
 | What you see | What it is |
 | --- | --- |
-| `Unknown model "ollama/…"`, and you have not written the provider yet | No `~/.pi/agent/models.json`, or a file under another name. A missing file is not an error — Pi just reads no providers. |
-| `Unknown model "ollama/…"`, with the file in place | Either the id is not declared in `models.json` at all, or the provider block is malformed: no `baseUrl`, no `api`, an empty `apiKey`, or a `cost` missing one of its four keys. Any of these drops the provider silently. |
-| `model '…' not found` | Wrong id spelling — see [Naming a cloud model](#naming-a-cloud-model). |
-| `410 … was retired at …` | The model is gone from the service. `ollama list` keeps stubs for retired cloud models, so trust the catalog, not your local list. |
+| `Unknown model "ollama/…"`, before you wrote the file | No `~/.pi/agent/models.json`, or a file under another name. A missing one is not an error — Pi just reads no providers. |
+| `Unknown model "ollama/…"`, with the file in place | Either the id is not declared in `models.json`, or the provider block is malformed: no `baseUrl`, no `api`, an empty `apiKey`, or a `cost` missing one of its four keys. Any of those drops the provider silently. |
+| `model not found` | Wrong id — see [Model ids](#model-ids). |
+| `410 … was retired at …` | The model is gone from the service. `ollama list` keeps stubs for retired cloud models, so trust the catalogue, not your local list. |
 | `402 … extra usage only` | The model is outside your plan. |
-| `invalid reasoning value` | `thinkingLevelMap` is missing or incomplete. |
+| `invalid reasoning value` | `thinkingLevelMap` is missing or incomplete. Ollama's error names the values it takes. |
 | Reviews arrive but ignore the task | `supportsDeveloperRole` is not `false`. |
-| A message pointing you at `/login` | `apiKey` is absent entirely. Add the placeholder. |
+| A message pointing at `/login` | `apiKey` is absent entirely. Add the placeholder. |
 
 The config format itself is in `docs/specs/config.md`.
